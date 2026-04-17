@@ -1,7 +1,7 @@
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
 const DB_NAME = 'lawpilot.db';
-const DB_SCHEMA_VERSION = 1;
+const DB_SCHEMA_VERSION = 2;
 
 let databasePromise: Promise<SQLiteDatabase> | null = null;
 
@@ -133,13 +133,14 @@ CREATE TABLE IF NOT EXISTS memory_events (
 CREATE TABLE IF NOT EXISTS connected_accounts (
   id TEXT PRIMARY KEY NOT NULL,
   user_id TEXT NOT NULL,
-  provider TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL,
   display_name TEXT NOT NULL,
   status TEXT NOT NULL,
   config_json TEXT NOT NULL,
   last_synced_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  UNIQUE (user_id, provider),
   FOREIGN KEY (user_id) REFERENCES users (id)
 );
 
@@ -168,6 +169,7 @@ async function initializeDatabase(): Promise<SQLiteDatabase> {
 
 async function runMigrations(db: SQLiteDatabase): Promise<void> {
   await ensureUsersColumns(db);
+  await migrateConnectedAccountsProviderConstraint(db);
   await db.execAsync(`PRAGMA user_version = ${DB_SCHEMA_VERSION};`);
 }
 
@@ -225,4 +227,53 @@ async function ensureUsersColumns(db: SQLiteDatabase): Promise<void> {
        AND name = 'Amina Rahman'
        AND law_firm_name = 'Rahman Legal Studio'`
   );
+}
+
+interface MasterTableRow {
+  sql: string | null;
+}
+
+async function migrateConnectedAccountsProviderConstraint(
+  db: SQLiteDatabase
+): Promise<void> {
+  const tableRow = await db.getFirstAsync<MasterTableRow>(
+    `SELECT sql
+     FROM sqlite_master
+     WHERE type = 'table' AND name = 'connected_accounts'`
+  );
+
+  const tableSql = tableRow?.sql?.toLowerCase() ?? '';
+  const hasLegacyProviderUnique = tableSql.includes('provider text not null unique');
+  const hasCompositeUnique = tableSql.includes('unique (user_id, provider)');
+
+  if (!hasLegacyProviderUnique || hasCompositeUnique) {
+    return;
+  }
+
+  await db.withTransactionAsync(async () => {
+    await db.execAsync(`
+      ALTER TABLE connected_accounts RENAME TO connected_accounts_legacy;
+
+      CREATE TABLE connected_accounts (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        config_json TEXT NOT NULL,
+        last_synced_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (user_id, provider),
+        FOREIGN KEY (user_id) REFERENCES users (id)
+      );
+
+      INSERT OR IGNORE INTO connected_accounts
+      (id, user_id, provider, display_name, status, config_json, last_synced_at, created_at, updated_at)
+      SELECT id, user_id, provider, display_name, status, config_json, last_synced_at, created_at, updated_at
+      FROM connected_accounts_legacy;
+
+      DROP TABLE connected_accounts_legacy;
+    `);
+  });
 }

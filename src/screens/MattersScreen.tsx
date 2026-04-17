@@ -19,7 +19,8 @@ export function MattersScreen() {
       >
         {snapshot.matters.length === 0 ? (
           <Text style={styles.helperText}>
-            No matters yet. Create one after adding your first client.
+            No matters yet. Load the demo workspace from Settings. Matter creation is not
+            implemented yet.
           </Text>
         ) : (
           snapshot.matters.map((matter) => {

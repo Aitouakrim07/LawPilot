@@ -19,7 +19,8 @@ export function ClientsScreen() {
       >
         {snapshot.clients.length === 0 ? (
           <Text style={styles.helperText}>
-            No clients yet. Add your first client from the voice assistant or a future client form.
+            No clients yet. Load the demo workspace from Settings, or add a client when client
+            creation is implemented.
           </Text>
         ) : (
           snapshot.clients.map((client) => {
