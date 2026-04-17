@@ -15,32 +15,38 @@ export function ClientsScreen() {
     >
       <SectionCard
         title="Client Roster"
-        subtitle="The starter workspace includes Ahmed and Sarah from the sample use cases."
+        subtitle="Client records stay local and can be linked to matters and follow-ups."
       >
-        {snapshot.clients.map((client) => {
-          const matterCount = snapshot.matters.filter(
-            (matter) => matter.clientId === client.id
-          ).length;
-          const pendingTaskCount = snapshot.tasks.filter(
-            (task) => task.clientId === client.id && task.status === 'pending'
-          ).length;
+        {snapshot.clients.length === 0 ? (
+          <Text style={styles.helperText}>
+            No clients yet. Add your first client from the voice assistant or a future client form.
+          </Text>
+        ) : (
+          snapshot.clients.map((client) => {
+            const matterCount = snapshot.matters.filter(
+              (matter) => matter.clientId === client.id
+            ).length;
+            const pendingTaskCount = snapshot.tasks.filter(
+              (task) => task.clientId === client.id && task.status === 'pending'
+            ).length;
 
-          return (
-            <View key={client.id} style={styles.itemRow}>
-              <View style={styles.itemBody}>
-                <Text style={styles.itemTitle}>{client.name}</Text>
-                <Text style={styles.itemMeta}>
-                  {client.email ?? 'No email'} • {client.phone ?? 'No phone'}
-                </Text>
-                {client.notes ? <Text style={styles.itemNotes}>{client.notes}</Text> : null}
+            return (
+              <View key={client.id} style={styles.itemRow}>
+                <View style={styles.itemBody}>
+                  <Text style={styles.itemTitle}>{client.name}</Text>
+                  <Text style={styles.itemMeta}>
+                    {client.email ?? 'No email'} • {client.phone ?? 'No phone'}
+                  </Text>
+                  {client.notes ? <Text style={styles.itemNotes}>{client.notes}</Text> : null}
+                </View>
+                <View style={styles.pillColumn}>
+                  <StatusPill label={`${matterCount} matters`} />
+                  <StatusPill label={`${pendingTaskCount} pending`} tone="success" />
+                </View>
               </View>
-              <View style={styles.pillColumn}>
-                <StatusPill label={`${matterCount} matters`} />
-                <StatusPill label={`${pendingTaskCount} pending`} tone="success" />
-              </View>
-            </View>
-          );
-        })}
+            );
+          })
+        )}
       </SectionCard>
     </ScreenView>
   );
@@ -70,6 +76,12 @@ const styles = StyleSheet.create({
     fontFamily: theme.typography.body,
     fontSize: 14,
     color: theme.colors.text,
+    lineHeight: 20,
+  },
+  helperText: {
+    fontFamily: theme.typography.body,
+    fontSize: 14,
+    color: theme.colors.textMuted,
     lineHeight: 20,
   },
   pillColumn: {

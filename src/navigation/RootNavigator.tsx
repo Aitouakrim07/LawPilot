@@ -2,14 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { theme } from '../theme';
 import { ClientsScreen } from '../screens/ClientsScreen';
 import { MattersScreen } from '../screens/MattersScreen';
+import { OnboardingScreen } from '../screens/OnboardingScreen';
 import { RemindersScreen } from '../screens/RemindersScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { TasksScreen } from '../screens/TasksScreen';
 import { TodayScreen } from '../screens/TodayScreen';
 import { VoiceAssistantScreen } from '../screens/VoiceAssistantScreen';
+import { useLawPilot } from '../providers/LawPilotProvider';
 import type { HomeTabParamList, RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -65,12 +68,28 @@ function HomeTabs() {
 }
 
 export function RootNavigator() {
+  const { loading, hasUserProfile } = useLawPilot();
+
+  if (loading) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <NavigationContainer theme={navigationTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Tabs" component={HomeTabs} />
-        <Stack.Screen name="Reminders" component={RemindersScreen} />
-        <Stack.Screen name="Settings" component={SettingsScreen} />
+        {hasUserProfile ? (
+          <>
+            <Stack.Screen name="Tabs" component={HomeTabs} />
+            <Stack.Screen name="Reminders" component={RemindersScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+          </>
+        ) : (
+          <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -92,3 +111,12 @@ function getTabIconName(routeName: keyof HomeTabParamList): keyof typeof Ionicon
       return 'ellipse-outline';
   }
 }
+
+const styles = StyleSheet.create({
+  loadingScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.background,
+  },
+});

@@ -1,9 +1,17 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { PropsWithChildren } from 'react';
-import type { AppSnapshot, AssistantExecutionResult } from '../types/models';
+import type {
+  AppSnapshot,
+  AssistantExecutionResult,
+  CreateUserProfileInput,
+  LoadDemoWorkspaceResult,
+} from '../types/models';
 import { getDatabase } from '../data/database';
 import {
+  createUserProfile as createUserProfileInStore,
   getAppSnapshot,
+  hasUserProfile as hasUserProfileInStore,
+  loadDemoWorkspace as loadDemoWorkspaceInStore,
   markReminderDone as markReminderDoneInStore,
   markTaskDone as markTaskDoneInStore,
 } from '../data/repositories';
@@ -17,8 +25,11 @@ import {
 interface LawPilotContextValue {
   snapshot: AppSnapshot;
   loading: boolean;
+  hasUserProfile: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  createUserProfile: (input: CreateUserProfileInput) => Promise<void>;
+  loadDemoWorkspace: () => Promise<LoadDemoWorkspaceResult>;
   runAssistantCommand: (transcript: string) => Promise<AssistantExecutionResult>;
   markTaskDone: (id: string) => Promise<void>;
   markReminderDone: (id: string) => Promise<void>;
@@ -41,6 +52,7 @@ const LawPilotContext = createContext<LawPilotContextValue | null>(null);
 export function LawPilotProvider({ children }: PropsWithChildren) {
   const [snapshot, setSnapshot] = useState<AppSnapshot>(emptySnapshot);
   const [loading, setLoading] = useState(true);
+  const [hasUserProfile, setHasUserProfile] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -49,15 +61,29 @@ export function LawPilotProvider({ children }: PropsWithChildren) {
     async function bootstrap() {
       try {
         await getDatabase();
-        await initializeNotifications();
-        const nextSnapshot = await getAppSnapshot();
+        const [profileExists, nextSnapshot] = await Promise.all([
+          hasUserProfileInStore(),
+          getAppSnapshot(),
+        ]);
+
+        let nextError: string | null = null;
+
+        try {
+          await initializeNotifications();
+        } catch (notificationError) {
+          nextError =
+            notificationError instanceof Error
+              ? notificationError.message
+              : 'Notification initialization failed.';
+        }
 
         if (!active) {
           return;
         }
 
         setSnapshot(nextSnapshot);
-        setError(null);
+        setHasUserProfile(profileExists);
+        setError(nextError);
       } catch (bootstrapError) {
         if (!active) {
           return;
@@ -68,6 +94,7 @@ export function LawPilotProvider({ children }: PropsWithChildren) {
             ? bootstrapError.message
             : 'Failed to bootstrap the local workspace.';
         setError(message);
+        setHasUserProfile(false);
       } finally {
         if (active) {
           setLoading(false);
@@ -83,8 +110,25 @@ export function LawPilotProvider({ children }: PropsWithChildren) {
   }, []);
 
   async function refresh(): Promise<void> {
-    const nextSnapshot = await getAppSnapshot();
+    const [profileExists, nextSnapshot] = await Promise.all([
+      hasUserProfileInStore(),
+      getAppSnapshot(),
+    ]);
+
+    setHasUserProfile(profileExists);
     setSnapshot(nextSnapshot);
+    setError(null);
+  }
+
+  async function createUserProfile(input: CreateUserProfileInput): Promise<void> {
+    await createUserProfileInStore(input);
+    await refresh();
+  }
+
+  async function loadDemoWorkspace(): Promise<LoadDemoWorkspaceResult> {
+    const result = await loadDemoWorkspaceInStore();
+    await refresh();
+    return result;
   }
 
   async function runAssistantCommand(
@@ -127,8 +171,11 @@ export function LawPilotProvider({ children }: PropsWithChildren) {
       value={{
         snapshot,
         loading,
+        hasUserProfile,
         error,
         refresh,
+        createUserProfile,
+        loadDemoWorkspace,
         runAssistantCommand,
         markTaskDone,
         markReminderDone,

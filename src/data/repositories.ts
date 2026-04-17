@@ -6,10 +6,12 @@ import type {
   Appointment,
   Client,
   ConnectedAccount,
+  CreateUserProfileInput,
   CreateAppointmentInput,
   CreateReminderInput,
   CreateTaskInput,
   CreateVoiceNoteInput,
+  LoadDemoWorkspaceResult,
   LogMemoryEventInput,
   Matter,
   MemoryEvent,
@@ -17,6 +19,7 @@ import type {
   ReminderHistoryResult,
   Task,
   TodayAgenda,
+  UpdateUserProfileInput,
   User,
   VoiceNote,
 } from '../types/models';
@@ -28,7 +31,20 @@ interface UserRow {
   name: string;
   law_firm_name: string;
   locale: string;
+  is_seed_profile: SqlBoolean | null;
+  timezone: string | null;
+  practice_areas: string | null;
+  work_start_time: string | null;
+  work_end_time: string | null;
   created_at: string;
+}
+
+interface CountRow {
+  count: number;
+}
+
+interface IdRow {
+  id: string;
 }
 
 interface ClientRow {
@@ -164,9 +180,55 @@ function mapUser(row: UserRow): User {
     name: row.name,
     lawFirmName: row.law_firm_name,
     locale: row.locale,
+    timezone: row.timezone ?? 'UTC',
+    practiceAreas: row.practice_areas ?? '',
+    workStartTime: row.work_start_time ?? '09:00',
+    workEndTime: row.work_end_time ?? '18:00',
     createdAt: row.created_at,
   };
 }
+
+const LOCAL_ACCOUNT_PROVIDER = 'local';
+const LOCAL_ACCOUNT_DISPLAY_NAME = 'Local Workspace';
+const LOCAL_ACCOUNT_CONFIG = JSON.stringify({ mode: 'sqlite-only', writable: true });
+
+const LEGACY_DEMO_CLIENT_IDS = ['client_ahmed', 'client_sarah'] as const;
+const LEGACY_DEMO_MATTER_IDS = [
+  'matter_immigration_review',
+  'matter_consultation_sarah',
+] as const;
+
+const DEMO_CLIENTS = [
+  {
+    name: 'Ahmed Hassan',
+    phone: '+33 6 12 34 56 78',
+    email: 'ahmed@example.com',
+    notes: 'Immigration client with outstanding document review.',
+  },
+  {
+    name: 'Sarah Coleman',
+    phone: '+33 6 98 76 54 32',
+    email: 'sarah@example.com',
+    notes: 'Employment consultation intake and follow-up planning.',
+  },
+] as const;
+
+const DEMO_MATTERS = [
+  {
+    title: 'Immigration Document Review',
+    matterType: 'Immigration',
+    status: 'active' as const,
+    notes: 'Waiting for a complete supporting document package.',
+    clientName: 'Ahmed Hassan',
+  },
+  {
+    title: 'Employment Consultation',
+    matterType: 'Employment',
+    status: 'active' as const,
+    notes: 'Initial consultation opened and awaiting next action.',
+    clientName: 'Sarah Coleman',
+  },
+] as const;
 
 function mapClient(row: ClientRow): Client {
   return {
@@ -294,12 +356,391 @@ function likeValue(query: string): string {
   return `%${query.trim().toLowerCase()}%`;
 }
 
+function sanitizeTimeValue(value: string | undefined, fallback: string): string {
+  if (!value) {
+    return fallback;
+  }
+
+  const trimmed = value.trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(trimmed) ? trimmed : fallback;
+}
+
+async function ensureLocalConnectedAccount(
+  userId: string,
+  now: string
+): Promise<void> {
+  const db = await getDatabase();
+  const accountId = `account_local_${userId}`;
+
+  await db.runAsync(
+    `INSERT OR IGNORE INTO connected_accounts
+     (id, user_id, provider, display_name, status, config_json, last_synced_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      accountId,
+      userId,
+      LOCAL_ACCOUNT_PROVIDER,
+      LOCAL_ACCOUNT_DISPLAY_NAME,
+      'connected',
+      LOCAL_ACCOUNT_CONFIG,
+      now,
+      now,
+      now,
+    ]
+  );
+
+  await db.runAsync(
+    `UPDATE connected_accounts
+     SET user_id = ?,
+         display_name = ?,
+         status = 'connected',
+         config_json = ?,
+         last_synced_at = ?,
+         updated_at = ?
+     WHERE provider = ?`,
+    [
+      userId,
+      LOCAL_ACCOUNT_DISPLAY_NAME,
+      LOCAL_ACCOUNT_CONFIG,
+      now,
+      now,
+      LOCAL_ACCOUNT_PROVIDER,
+    ]
+  );
+}
+
+async function clearLegacyDemoWorkspaceData(userId: string): Promise<void> {
+  const db = await getDatabase();
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `DELETE FROM tasks
+       WHERE user_id = ?
+         AND (
+           client_id IN (?, ?)
+           OR matter_id IN (?, ?)
+         )`,
+      [
+        userId,
+        LEGACY_DEMO_CLIENT_IDS[0],
+        LEGACY_DEMO_CLIENT_IDS[1],
+        LEGACY_DEMO_MATTER_IDS[0],
+        LEGACY_DEMO_MATTER_IDS[1],
+      ]
+    );
+
+    await db.runAsync(
+      `DELETE FROM reminders
+       WHERE user_id = ?
+         AND (
+           client_id IN (?, ?)
+           OR matter_id IN (?, ?)
+         )`,
+      [
+        userId,
+        LEGACY_DEMO_CLIENT_IDS[0],
+        LEGACY_DEMO_CLIENT_IDS[1],
+        LEGACY_DEMO_MATTER_IDS[0],
+        LEGACY_DEMO_MATTER_IDS[1],
+      ]
+    );
+
+    await db.runAsync(
+      `DELETE FROM appointments
+       WHERE user_id = ?
+         AND (
+           client_id IN (?, ?)
+           OR matter_id IN (?, ?)
+         )`,
+      [
+        userId,
+        LEGACY_DEMO_CLIENT_IDS[0],
+        LEGACY_DEMO_CLIENT_IDS[1],
+        LEGACY_DEMO_MATTER_IDS[0],
+        LEGACY_DEMO_MATTER_IDS[1],
+      ]
+    );
+
+    await db.runAsync(
+      `DELETE FROM matters
+       WHERE user_id = ?
+         AND id IN (?, ?)`,
+      [userId, LEGACY_DEMO_MATTER_IDS[0], LEGACY_DEMO_MATTER_IDS[1]]
+    );
+
+    await db.runAsync(
+      `DELETE FROM clients
+       WHERE user_id = ?
+         AND id IN (?, ?)`,
+      [userId, LEGACY_DEMO_CLIENT_IDS[0], LEGACY_DEMO_CLIENT_IDS[1]]
+    );
+  });
+}
+
 export async function getUser(): Promise<User | null> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<UserRow>(
-    'SELECT * FROM users ORDER BY created_at ASC LIMIT 1'
+    `SELECT * FROM users
+     WHERE COALESCE(is_seed_profile, 0) = 0
+     ORDER BY created_at ASC
+     LIMIT 1`
   );
   return row ? mapUser(row) : null;
+}
+
+export async function hasUserProfile(): Promise<boolean> {
+  const db = await getDatabase();
+  const result = await db.getFirstAsync<CountRow>(
+    `SELECT COUNT(*) as count
+     FROM users
+     WHERE COALESCE(is_seed_profile, 0) = 0`
+  );
+
+  return (result?.count ?? 0) > 0;
+}
+
+export async function createUserProfile(input: CreateUserProfileInput): Promise<User> {
+  const name = input.name.trim();
+  const lawFirmName = input.lawFirmName.trim();
+  const locale = input.locale.trim() || 'en-US';
+  const timezone = input.timezone.trim() || 'UTC';
+  const practiceAreas = input.practiceAreas?.trim() ?? '';
+  const workStartTime = sanitizeTimeValue(input.workStartTime, '09:00');
+  const workEndTime = sanitizeTimeValue(input.workEndTime, '18:00');
+
+  if (!name) {
+    throw new Error('Full name is required.');
+  }
+
+  if (!lawFirmName) {
+    throw new Error('Law firm name is required.');
+  }
+
+  const db = await getDatabase();
+  const existingUser = await getUser();
+
+  if (existingUser) {
+    throw new Error('A user profile already exists in this workspace.');
+  }
+
+  const now = new Date().toISOString();
+  const legacyRow = await db.getFirstAsync<UserRow>(
+    `SELECT * FROM users
+     WHERE COALESCE(is_seed_profile, 0) = 1
+     ORDER BY created_at ASC
+     LIMIT 1`
+  );
+
+  let userId = createId('user');
+
+  if (legacyRow) {
+    userId = legacyRow.id;
+
+    await db.runAsync(
+      `UPDATE users
+       SET name = ?,
+           law_firm_name = ?,
+           locale = ?,
+           is_seed_profile = 0,
+           timezone = ?,
+           practice_areas = ?,
+           work_start_time = ?,
+           work_end_time = ?
+       WHERE id = ?`,
+      [
+        name,
+        lawFirmName,
+        locale,
+        timezone,
+        practiceAreas,
+        workStartTime,
+        workEndTime,
+        userId,
+      ]
+    );
+
+    await clearLegacyDemoWorkspaceData(userId);
+  } else {
+    await db.runAsync(
+      `INSERT INTO users
+       (id, name, law_firm_name, locale, is_seed_profile, timezone, practice_areas, work_start_time, work_end_time, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userId,
+        name,
+        lawFirmName,
+        locale,
+        0,
+        timezone,
+        practiceAreas,
+        workStartTime,
+        workEndTime,
+        now,
+      ]
+    );
+  }
+
+  await ensureLocalConnectedAccount(userId, now);
+
+  const created = await getUser();
+
+  if (!created) {
+    throw new Error('Failed to create user profile.');
+  }
+
+  return created;
+}
+
+export async function updateUserProfile(
+  input: UpdateUserProfileInput
+): Promise<User | null> {
+  const existing = await getUser();
+
+  if (!existing) {
+    return null;
+  }
+
+  const name = input.name?.trim() ?? existing.name;
+  const lawFirmName = input.lawFirmName?.trim() ?? existing.lawFirmName;
+  const locale = input.locale?.trim() || existing.locale;
+  const timezone = input.timezone?.trim() || existing.timezone;
+  const practiceAreas =
+    input.practiceAreas !== undefined ? input.practiceAreas.trim() : existing.practiceAreas;
+  const workStartTime =
+    input.workStartTime !== undefined
+      ? sanitizeTimeValue(input.workStartTime, existing.workStartTime)
+      : existing.workStartTime;
+  const workEndTime =
+    input.workEndTime !== undefined
+      ? sanitizeTimeValue(input.workEndTime, existing.workEndTime)
+      : existing.workEndTime;
+
+  if (!name) {
+    throw new Error('Full name is required.');
+  }
+
+  if (!lawFirmName) {
+    throw new Error('Law firm name is required.');
+  }
+
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE users
+     SET name = ?,
+         law_firm_name = ?,
+         locale = ?,
+         timezone = ?,
+         practice_areas = ?,
+         work_start_time = ?,
+         work_end_time = ?
+     WHERE id = ?`,
+    [
+      name,
+      lawFirmName,
+      locale,
+      timezone,
+      practiceAreas,
+      workStartTime,
+      workEndTime,
+      existing.id,
+    ]
+  );
+
+  return getUser();
+}
+
+export async function loadDemoWorkspace(): Promise<LoadDemoWorkspaceResult> {
+  const user = await getUser();
+
+  if (!user) {
+    throw new Error('Create your profile before loading demo data.');
+  }
+
+  const db = await getDatabase();
+  const now = new Date().toISOString();
+  let insertedClients = 0;
+  let insertedMatters = 0;
+
+  await db.withTransactionAsync(async () => {
+    const clientIdsByName = new Map<string, string>();
+
+    for (const demoClient of DEMO_CLIENTS) {
+      const existingClient = await db.getFirstAsync<IdRow>(
+        `SELECT id FROM clients
+         WHERE user_id = ? AND LOWER(name) = LOWER(?)
+         LIMIT 1`,
+        [user.id, demoClient.name]
+      );
+
+      if (existingClient?.id) {
+        clientIdsByName.set(demoClient.name, existingClient.id);
+        continue;
+      }
+
+      const clientId = createId('client');
+      await db.runAsync(
+        `INSERT INTO clients
+         (id, user_id, name, phone, email, notes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          clientId,
+          user.id,
+          demoClient.name,
+          demoClient.phone,
+          demoClient.email,
+          demoClient.notes,
+          now,
+          now,
+        ]
+      );
+
+      insertedClients += 1;
+      clientIdsByName.set(demoClient.name, clientId);
+    }
+
+    for (const demoMatter of DEMO_MATTERS) {
+      const clientId = clientIdsByName.get(demoMatter.clientName);
+
+      if (!clientId) {
+        continue;
+      }
+
+      const existingMatter = await db.getFirstAsync<IdRow>(
+        `SELECT id FROM matters
+         WHERE user_id = ? AND client_id = ? AND LOWER(title) = LOWER(?)
+         LIMIT 1`,
+        [user.id, clientId, demoMatter.title]
+      );
+
+      if (existingMatter?.id) {
+        continue;
+      }
+
+      await db.runAsync(
+        `INSERT INTO matters
+         (id, user_id, client_id, title, matter_type, status, notes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          createId('matter'),
+          user.id,
+          clientId,
+          demoMatter.title,
+          demoMatter.matterType,
+          demoMatter.status,
+          demoMatter.notes,
+          now,
+          now,
+        ]
+      );
+
+      insertedMatters += 1;
+    }
+  });
+
+  return {
+    insertedClients,
+    insertedMatters,
+  };
 }
 
 export async function getClients(): Promise<Client[]> {

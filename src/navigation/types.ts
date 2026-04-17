@@ -7,6 +7,7 @@ export type HomeTabParamList = {
 };
 
 export type RootStackParamList = {
+  Onboarding: undefined;
   Tabs: undefined;
   Reminders: undefined;
   Settings: undefined;

@@ -32,6 +32,11 @@ export function TodayScreen() {
     (task) =>
       task.status === 'pending' && task.dueAt && isSameCalendarDay(task.dueAt, today)
   );
+  const isWorkspaceEmpty =
+    snapshot.clients.length === 0 &&
+    snapshot.matters.length === 0 &&
+    snapshot.tasks.length === 0 &&
+    snapshot.reminders.length === 0;
   const upcomingReminders = snapshot.reminders
     .filter((reminder) => reminder.status === 'pending')
     .slice(0, 3);
@@ -86,6 +91,14 @@ export function TodayScreen() {
             }
           />
         </View>
+
+        {isWorkspaceEmpty ? (
+          <View style={styles.emptyWorkspaceBanner}>
+            <Text style={styles.emptyWorkspaceText}>
+              Start by adding a client, creating a matter, or using the voice assistant.
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.weekStrip}>
           {weekStrip.map((date) => {
@@ -250,6 +263,20 @@ const styles = StyleSheet.create({
   quickActions: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
+  },
+  emptyWorkspaceBanner: {
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+  },
+  emptyWorkspaceText: {
+    fontFamily: theme.typography.body,
+    fontSize: 14,
+    lineHeight: 20,
+    color: 'rgba(255,255,255,0.92)',
   },
   weekStrip: {
     flexDirection: 'row',

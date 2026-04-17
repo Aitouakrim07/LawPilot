@@ -22,6 +22,10 @@ export interface User {
   name: string;
   lawFirmName: string;
   locale: string;
+  timezone: string;
+  practiceAreas: string;
+  workStartTime: string;
+  workEndTime: string;
   createdAt: string;
 }
 
@@ -156,6 +160,31 @@ export interface CreateTaskInput {
   priority?: TaskPriority;
   source?: string;
   notificationId?: string | null;
+}
+
+export interface CreateUserProfileInput {
+  name: string;
+  lawFirmName: string;
+  locale: string;
+  timezone: string;
+  practiceAreas?: string;
+  workStartTime?: string;
+  workEndTime?: string;
+}
+
+export interface UpdateUserProfileInput {
+  name?: string;
+  lawFirmName?: string;
+  locale?: string;
+  timezone?: string;
+  practiceAreas?: string;
+  workStartTime?: string;
+  workEndTime?: string;
+}
+
+export interface LoadDemoWorkspaceResult {
+  insertedClients: number;
+  insertedMatters: number;
 }
 
 export interface CreateReminderInput {

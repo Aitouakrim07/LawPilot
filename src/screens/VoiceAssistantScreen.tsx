@@ -16,10 +16,10 @@ import {
 } from '../features/assistant/speech';
 
 const quickCommands = [
-  'Remind me tomorrow at 10 to call Ahmed about the immigration documents.',
-  'What reminder did I ask you to create about Ahmed?',
+  'Remind me tomorrow at 10 to send the intake checklist.',
+  'What reminder did I ask you to create about the intake checklist?',
   'What do I have today?',
-  'Add a follow-up for client Sarah next Friday.',
+  'Add a follow-up for next Friday.',
   'Create a consultation appointment tomorrow at 3 PM.',
   'Show pending follow-ups.',
 ];

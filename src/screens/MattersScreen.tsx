@@ -17,25 +17,31 @@ export function MattersScreen() {
         title="Open Matters"
         subtitle="Matter status is visible so voice-created tasks and reminders can attach later."
       >
-        {snapshot.matters.map((matter) => {
-          const client = snapshot.clients.find((item) => item.id === matter.clientId);
+        {snapshot.matters.length === 0 ? (
+          <Text style={styles.helperText}>
+            No matters yet. Create one after adding your first client.
+          </Text>
+        ) : (
+          snapshot.matters.map((matter) => {
+            const client = snapshot.clients.find((item) => item.id === matter.clientId);
 
-          return (
-            <View key={matter.id} style={styles.itemRow}>
-              <View style={styles.itemBody}>
-                <Text style={styles.itemTitle}>{matter.title}</Text>
-                <Text style={styles.itemMeta}>
-                  {client?.name ?? 'Unknown client'} • {matter.matterType}
-                </Text>
-                {matter.notes ? <Text style={styles.itemNotes}>{matter.notes}</Text> : null}
+            return (
+              <View key={matter.id} style={styles.itemRow}>
+                <View style={styles.itemBody}>
+                  <Text style={styles.itemTitle}>{matter.title}</Text>
+                  <Text style={styles.itemMeta}>
+                    {client?.name ?? 'Unknown client'} • {matter.matterType}
+                  </Text>
+                  {matter.notes ? <Text style={styles.itemNotes}>{matter.notes}</Text> : null}
+                </View>
+                <StatusPill
+                  label={matter.status.replace('_', ' ')}
+                  tone={matter.status === 'active' ? 'success' : 'warning'}
+                />
               </View>
-              <StatusPill
-                label={matter.status.replace('_', ' ')}
-                tone={matter.status === 'active' ? 'success' : 'warning'}
-              />
-            </View>
-          );
-        })}
+            );
+          })
+        )}
       </SectionCard>
     </ScreenView>
   );
@@ -65,6 +71,12 @@ const styles = StyleSheet.create({
     fontFamily: theme.typography.body,
     fontSize: 14,
     color: theme.colors.text,
+    lineHeight: 20,
+  },
+  helperText: {
+    fontFamily: theme.typography.body,
+    fontSize: 14,
+    color: theme.colors.textMuted,
     lineHeight: 20,
   },
 });

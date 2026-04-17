@@ -1,9 +1,7 @@
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
 const DB_NAME = 'lawpilot.db';
-const DEFAULT_USER_ID = 'user_default';
-const DEFAULT_CLIENT_AHMED_ID = 'client_ahmed';
-const DEFAULT_CLIENT_SARAH_ID = 'client_sarah';
+const DB_SCHEMA_VERSION = 1;
 
 let databasePromise: Promise<SQLiteDatabase> | null = null;
 
@@ -16,6 +14,11 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   law_firm_name TEXT NOT NULL,
   locale TEXT NOT NULL,
+  is_seed_profile INTEGER NOT NULL DEFAULT 0,
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  practice_areas TEXT NOT NULL DEFAULT '',
+  work_start_time TEXT NOT NULL DEFAULT '09:00',
+  work_end_time TEXT NOT NULL DEFAULT '18:00',
   created_at TEXT NOT NULL
 );
 
@@ -159,145 +162,67 @@ export async function getDatabase(): Promise<SQLiteDatabase> {
 async function initializeDatabase(): Promise<SQLiteDatabase> {
   const db = await openDatabaseAsync(DB_NAME);
   await db.execAsync(schemaSql);
-  await seedInitialData(db);
+  await runMigrations(db);
   return db;
 }
 
-async function seedInitialData(db: SQLiteDatabase): Promise<void> {
-  const existing = await db.getFirstAsync<{ count: number }>(
-    'SELECT COUNT(*) as count FROM users'
-  );
-
-  if ((existing?.count ?? 0) > 0) {
-    return;
-  }
-
-  const now = new Date().toISOString();
-
-  await db.withTransactionAsync(async () => {
-    await db.runAsync(
-      `INSERT INTO users (id, name, law_firm_name, locale, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [DEFAULT_USER_ID, 'Amina Rahman', 'Rahman Legal Studio', 'en-US', now]
-    );
-
-    await db.runAsync(
-      `INSERT INTO clients (id, user_id, name, phone, email, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        DEFAULT_CLIENT_AHMED_ID,
-        DEFAULT_USER_ID,
-        'Ahmed Hassan',
-        '+33 6 12 34 56 78',
-        'ahmed@example.com',
-        'Immigration client with outstanding document review.',
-        now,
-        now,
-      ]
-    );
-
-    await db.runAsync(
-      `INSERT INTO clients (id, user_id, name, phone, email, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        DEFAULT_CLIENT_SARAH_ID,
-        DEFAULT_USER_ID,
-        'Sarah Coleman',
-        '+33 6 98 76 54 32',
-        'sarah@example.com',
-        'Employment consultation intake and follow-up planning.',
-        now,
-        now,
-      ]
-    );
-
-    await db.runAsync(
-      `INSERT INTO matters (id, user_id, client_id, title, matter_type, status, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        'matter_immigration_review',
-        DEFAULT_USER_ID,
-        DEFAULT_CLIENT_AHMED_ID,
-        'Immigration Document Review',
-        'Immigration',
-        'active',
-        'Waiting for a complete supporting document package.',
-        now,
-        now,
-      ]
-    );
-
-    await db.runAsync(
-      `INSERT INTO matters (id, user_id, client_id, title, matter_type, status, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        'matter_consultation_sarah',
-        DEFAULT_USER_ID,
-        DEFAULT_CLIENT_SARAH_ID,
-        'Employment Consultation',
-        'Employment',
-        'active',
-        'Initial consultation opened and awaiting next action.',
-        now,
-        now,
-      ]
-    );
-
-    await db.runAsync(
-      `INSERT INTO connected_accounts
-       (id, user_id, provider, display_name, status, config_json, last_synced_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        'account_local',
-        DEFAULT_USER_ID,
-        'local',
-        'Local Workspace',
-        'connected',
-        JSON.stringify({ mode: 'sqlite-only', writable: true }),
-        now,
-        now,
-        now,
-      ]
-    );
-
-    await db.runAsync(
-      `INSERT INTO connected_accounts
-       (id, user_id, provider, display_name, status, config_json, last_synced_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        'account_google_calendar',
-        DEFAULT_USER_ID,
-        'google_calendar',
-        'Google Calendar',
-        'placeholder',
-        JSON.stringify({ mode: 'placeholder', writable: false }),
-        null,
-        now,
-        now,
-      ]
-    );
-
-    await db.runAsync(
-      `INSERT INTO connected_accounts
-       (id, user_id, provider, display_name, status, config_json, last_synced_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        'account_notion',
-        DEFAULT_USER_ID,
-        'notion',
-        'Notion',
-        'placeholder',
-        JSON.stringify({ mode: 'placeholder', writable: false }),
-        null,
-        now,
-        now,
-      ]
-    );
-  });
+async function runMigrations(db: SQLiteDatabase): Promise<void> {
+  await ensureUsersColumns(db);
+  await db.execAsync(`PRAGMA user_version = ${DB_SCHEMA_VERSION};`);
 }
 
-export const seedIds = {
-  userId: DEFAULT_USER_ID,
-  ahmedClientId: DEFAULT_CLIENT_AHMED_ID,
-  sarahClientId: DEFAULT_CLIENT_SARAH_ID,
-};
+interface TableInfoRow {
+  name: string;
+}
+
+async function ensureUsersColumns(db: SQLiteDatabase): Promise<void> {
+  const rows = await db.getAllAsync<TableInfoRow>('PRAGMA table_info(users)');
+  const existing = new Set(rows.map((row) => row.name));
+
+  if (!existing.has('is_seed_profile')) {
+    await db.execAsync(
+      "ALTER TABLE users ADD COLUMN is_seed_profile INTEGER NOT NULL DEFAULT 0"
+    );
+  }
+
+  if (!existing.has('timezone')) {
+    await db.execAsync(
+      "ALTER TABLE users ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'"
+    );
+  }
+
+  if (!existing.has('practice_areas')) {
+    await db.execAsync(
+      "ALTER TABLE users ADD COLUMN practice_areas TEXT NOT NULL DEFAULT ''"
+    );
+  }
+
+  if (!existing.has('work_start_time')) {
+    await db.execAsync(
+      "ALTER TABLE users ADD COLUMN work_start_time TEXT NOT NULL DEFAULT '09:00'"
+    );
+  }
+
+  if (!existing.has('work_end_time')) {
+    await db.execAsync(
+      "ALTER TABLE users ADD COLUMN work_end_time TEXT NOT NULL DEFAULT '18:00'"
+    );
+  }
+
+  await db.runAsync(
+    `UPDATE users
+     SET is_seed_profile = COALESCE(is_seed_profile, 0),
+         timezone = COALESCE(NULLIF(timezone, ''), 'UTC'),
+         practice_areas = COALESCE(practice_areas, ''),
+         work_start_time = COALESCE(NULLIF(work_start_time, ''), '09:00'),
+         work_end_time = COALESCE(NULLIF(work_end_time, ''), '18:00')`
+  );
+
+  await db.runAsync(
+    `UPDATE users
+     SET is_seed_profile = 1
+     WHERE id = 'user_default'
+       AND name = 'Amina Rahman'
+       AND law_firm_name = 'Rahman Legal Studio'`
+  );
+}
