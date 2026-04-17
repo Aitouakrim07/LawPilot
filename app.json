@@ -16,15 +16,36 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.lawpilot.mobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1d3657"
       },
+      "permissions": [
+        "RECORD_AUDIO",
+        "POST_NOTIFICATIONS"
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-font",
+      "expo-notifications",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow LawPilot to capture dictation and voice commands.",
+          "speechRecognitionPermission": "Allow LawPilot to convert your speech into text commands.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.as"
+          ]
+        }
+      ]
+    ]
   }
 }
