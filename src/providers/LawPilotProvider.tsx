@@ -5,6 +5,7 @@ import type {
   AssistantExecutionResult,
   CreateUserProfileInput,
   LoadDemoWorkspaceResult,
+  UpdateUserProfileInput,
 } from '../types/models';
 import { getDatabase } from '../data/database';
 import {
@@ -14,6 +15,7 @@ import {
   loadDemoWorkspace as loadDemoWorkspaceInStore,
   markReminderDone as markReminderDoneInStore,
   markTaskDone as markTaskDoneInStore,
+  updateUserProfile as updateUserProfileInStore,
 } from '../data/repositories';
 import { executeAssistantCommand } from '../features/assistant/assistantService';
 import { connectorRegistry } from '../features/connectors/connectorRegistry';
@@ -29,6 +31,7 @@ interface LawPilotContextValue {
   error: string | null;
   refresh: () => Promise<void>;
   createUserProfile: (input: CreateUserProfileInput) => Promise<void>;
+  updateUserProfile: (input: UpdateUserProfileInput) => Promise<void>;
   loadDemoWorkspace: () => Promise<LoadDemoWorkspaceResult>;
   runAssistantCommand: (transcript: string) => Promise<AssistantExecutionResult>;
   markTaskDone: (id: string) => Promise<void>;
@@ -131,6 +134,11 @@ export function LawPilotProvider({ children }: PropsWithChildren) {
     return result;
   }
 
+  async function updateUserProfile(input: UpdateUserProfileInput): Promise<void> {
+    await updateUserProfileInStore(input);
+    await refresh();
+  }
+
   async function runAssistantCommand(
     transcript: string
   ): Promise<AssistantExecutionResult> {
@@ -175,6 +183,7 @@ export function LawPilotProvider({ children }: PropsWithChildren) {
         error,
         refresh,
         createUserProfile,
+        updateUserProfile,
         loadDemoWorkspace,
         runAssistantCommand,
         markTaskDone,

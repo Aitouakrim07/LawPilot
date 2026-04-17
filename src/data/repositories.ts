@@ -197,6 +197,7 @@ const LEGACY_DEMO_MATTER_IDS = [
   'matter_immigration_review',
   'matter_consultation_sarah',
 ] as const;
+const LEGACY_DEMO_NAMES = ['Ahmed Hassan', 'Sarah Coleman'] as const;
 
 const DEMO_CLIENTS = [
   {
@@ -397,13 +398,14 @@ async function ensureLocalConnectedAccount(
          config_json = ?,
          last_synced_at = ?,
          updated_at = ?
-     WHERE provider = ?`,
+     WHERE user_id = ? AND provider = ?`,
     [
       userId,
       LOCAL_ACCOUNT_DISPLAY_NAME,
       LOCAL_ACCOUNT_CONFIG,
       now,
       now,
+      userId,
       LOCAL_ACCOUNT_PROVIDER,
     ]
   );
@@ -411,6 +413,7 @@ async function ensureLocalConnectedAccount(
 
 async function clearLegacyDemoWorkspaceData(userId: string): Promise<void> {
   const db = await getDatabase();
+  const legacyTranscriptPatterns = LEGACY_DEMO_NAMES.map((name) => `%${name.toLowerCase()}%`);
 
   await db.withTransactionAsync(async () => {
     await db.runAsync(
@@ -473,6 +476,25 @@ async function clearLegacyDemoWorkspaceData(userId: string): Promise<void> {
        WHERE user_id = ?
          AND id IN (?, ?)`,
       [userId, LEGACY_DEMO_CLIENT_IDS[0], LEGACY_DEMO_CLIENT_IDS[1]]
+    );
+
+    await db.runAsync(
+      `DELETE FROM memory_events
+       WHERE user_id = ?
+         AND (
+           created_object_id IN (?, ?, ?, ?)
+           OR LOWER(original_transcript) LIKE ?
+           OR LOWER(original_transcript) LIKE ?
+         )`,
+      [
+        userId,
+        LEGACY_DEMO_CLIENT_IDS[0],
+        LEGACY_DEMO_CLIENT_IDS[1],
+        LEGACY_DEMO_MATTER_IDS[0],
+        LEGACY_DEMO_MATTER_IDS[1],
+        legacyTranscriptPatterns[0],
+        legacyTranscriptPatterns[1],
+      ]
     );
   });
 }
